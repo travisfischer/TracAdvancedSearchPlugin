@@ -10,11 +10,7 @@ import itertools
 from operator import itemgetter
 import pkg_resources
 import re
-
-try:
-	import simplejson as json
-except ImportError:
-	import json
+import simplejson
 
 from trac.perm import IPermissionRequestor
 from trac.ticket.api import ITicketChangeListener
@@ -35,6 +31,7 @@ from trac.util.presentation import Paginator
 from trac.util.translation import _
 from trac.web.chrome import add_stylesheet, add_warning, add_script
 from trac.wiki.formatter import extract_link
+
 
 import operator
 
@@ -62,7 +59,7 @@ class SearchBackendException(Exception):
 	Raised by SearchBackends when there is a problem completing the search
 	query or indexing.
 	"""
-
+	pass
 
 class AdvancedSearchPlugin(Component):
 	implements(
@@ -138,6 +135,7 @@ class AdvancedSearchPlugin(Component):
 			'start_points': StartPoints.parse_args(req.args, self.providers),
 			'per_page': per_page,
 			'ticket_statuses': self._get_ticket_statuses(req.args),
+			'source_filter_defaults': self.config.get('advanced_search_plugin', 'source_filter_defaults', '').split(','),
 		}
 
 		# Initial page request
@@ -241,11 +239,13 @@ class AdvancedSearchPlugin(Component):
 
 	def _get_ticket_statuses(self, req_args):
 		"""Create map of ticket statuses."""
-		status_values = ('new', 'assigned', 'closed')
+		status_values = self.config.get('advanced_search_plugin', 'ticket_status_filters', '').split(',')
+
 		statuses = []
 
 		# Default to new/assigned
-		defaults = set(('new', 'assigned'))
+		defaults = self.config.get('advanced_search_plugin', 'status_filter_defaults', '').split(',')
+
 		if any((req_args.get('status_%s' % s) for s in status_values)):
 			defaults = set()
 
@@ -260,13 +260,13 @@ class AdvancedSearchPlugin(Component):
 
 	def _get_quickjump(self, req, query):
 		"""Find quickjump requests if the search comes from the searchbox
-		in the header.  The search is assumed to be from the header searchbox 
+		in the header.  The search is assumed to be from the header searchbox
 		if no page or per_page arguments are found.
 		"""
 		if req.args.get('page') or req.args.get('per_page'):
 			return None
 
-		link = extract_link(self.env, 
+		link = extract_link(self.env,
 			Context.from_request(req, 'advsearch'), query)
 		if isinstance(link, Element):
 			return link.attrib.get('href')
@@ -403,7 +403,7 @@ class StartPoints(object):
 				start_points[backend_name] = prev_start
 			start_points[backend_name] += 1
 
-		return json.dumps(
+		return simplejson.dumps(
 			[
 				{
 					'name': cls.FORMAT_STRING % name,
